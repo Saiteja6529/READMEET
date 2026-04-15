@@ -19,15 +19,17 @@ import { PasteAnalysisPage } from './pages/PasteAnalysisPage';
 import { LoginPage } from './pages/LoginPage';
 import { LoadingProvider } from './hooks/useLoading';
 import { ToastProvider } from './hooks/useToast';
-import { AuthProvider, useAuth } from './components/AuthContext';
+import { AuthProvider } from './components/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 /**
- * ProtectedRoute: Checks if the user is logged in via Google OAuth.
- * Shows a loading spinner while the auth state is being verified.
+ * EXPO BYPASS: Automatically allows access to the dashboard.
+ * Use this during the presentation if the Google OAuth handshake is delayed.
  */
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  // Hardcoding true for the Expo Demo
+  const isAuthenticated = true; 
+  const loading = false;
   
   if (loading) {
     return (
@@ -55,35 +57,24 @@ function App() {
                 {/* Public Route: Login */}
                 <Route path="/login" element={<LoginPage />} />
                 
-                {/* Protected App Routes: All nested under the main Layout */}
+                {/* Protected App Routes */}
                 <Route 
                   path="/*" 
                   element={
                     <ProtectedRoute>
                       <Layout>
                         <Routes>
-                          {/* Main Hub */}
                           <Route path="/dashboard" element={<Dashboard />} />
-                          
-                          {/* Meeting & Recording Logic */}
                           <Route path="/record" element={<RecordingPage />} />
                           <Route path="/transcribe" element={<TranscribePage />} />
                           <Route path="/paste-analysis" element={<PasteAnalysisPage />} />
                           <Route path="/meeting/:id" element={<MeetingDetails />} />
-                          
-                          {/* Management & History */}
                           <Route path="/history" element={<History />} />
                           <Route path="/tasks" element={<TasksPage />} />
                           <Route path="/analytics" element={<AnalyticsPage />} />
-                          
-                          {/* User Configuration */}
                           <Route path="/settings" element={<SettingsPage />} />
                           <Route path="/profile" element={<ProfilePage />} />
-                          
-                          {/* Default Redirect */}
                           <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                          
-                          {/* Catch-all for undefined routes inside the shell */}
                           <Route path="*" element={<Navigate to="/dashboard" replace />} />
                         </Routes>
                       </Layout>
