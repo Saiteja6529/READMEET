@@ -1,0 +1,8 @@
+{
+  "name": "Smart AI Meeting Assistant",
+  "description": "Real-time speech-to-notes assistant. Record meetings, transcribe audio, and generate intelligent summaries instantly.",
+  "requestFramePermissions": [
+    "microphone",
+    "display-capture"
+  ]
+}
