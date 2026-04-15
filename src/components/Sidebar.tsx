@@ -45,7 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isDarkMode, setIsDarkMode, onC
         <div className="w-8 h-8 bg-corporate-accent rounded flex items-center justify-center">
           <Sparkles size={18} className="text-white" />
         </div>
-        <span className="font-semibold text-lg tracking-tight">Meeting AI</span>
+        <span className="font-semibold text-lg tracking-tight">READMEET</span>
       </div>
 
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">

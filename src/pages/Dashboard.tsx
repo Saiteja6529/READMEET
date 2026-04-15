@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   Mic, 
@@ -49,6 +49,11 @@ export const Dashboard: React.FC = () => {
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [error, setError] = useState<{ type: AppErrorType; message: string } | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Update document title for the Expo
+  useEffect(() => {
+    document.title = "READMET | AI Agentic Workspace";
+  }, []);
   
   const handleFileUpload = async (file: File) => {
     setIsProcessingLocal(true);
@@ -59,7 +64,6 @@ export const Dashboard: React.FC = () => {
     setGlobalProgress(10);
     
     try {
-      // FIX: Use VITE_ prefix for frontend env access
       const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
       if (!apiKey) throw new Error("AI Configuration missing (API Key)");
 
@@ -177,7 +181,7 @@ export const Dashboard: React.FC = () => {
         }}
       />
 
-      {/* Welcome Hero */}
+      {/* Welcome Hero - BRANDED AS READMET */}
       <section className="relative overflow-hidden rounded-3xl bg-corporate-primary p-8 lg:p-12 text-white shadow-2xl">
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
           <div className="space-y-4 max-w-2xl">
@@ -187,7 +191,7 @@ export const Dashboard: React.FC = () => {
               className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-[10px] font-bold uppercase tracking-widest"
             >
               <Sparkles size={12} className="text-corporate-accent" />
-              AI-Powered Meeting Intelligence
+              AI-Powered Documentation & Intelligence
             </motion.div>
             <motion.h1 
               initial={{ opacity: 0, y: 20 }}
@@ -195,7 +199,7 @@ export const Dashboard: React.FC = () => {
               transition={{ delay: 0.1 }}
               className="text-4xl lg:text-5xl font-bold tracking-tight"
             >
-              Welcome back, {user?.name?.split(' ')[0] || 'User'} 👋
+              Welcome to READMET, {user?.name?.split(' ')[0] || 'User'} 👋
             </motion.h1>
             <motion.p 
               initial={{ opacity: 0, y: 20 }}
@@ -203,8 +207,8 @@ export const Dashboard: React.FC = () => {
               transition={{ delay: 0.2 }}
               className="text-slate-300 text-lg leading-relaxed"
             >
-              Your last analysis saved you approximately 45 minutes of manual note-taking.
-              Stay productive with AI-driven insights.
+              Your intelligent partner for meeting synthesis and repository documentation.
+              Experience seamless AI-driven insights.
             </motion.p>
           </div>
           
@@ -256,10 +260,7 @@ export const Dashboard: React.FC = () => {
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Content: Upload & Recent */}
         <div className="lg:col-span-2 space-y-8">
-          
-          {/* NEW: GitHub Publishing Section */}
           <GitHubManager />
 
           {/* Join Link Section */}
@@ -278,7 +279,6 @@ export const Dashboard: React.FC = () => {
             <MeetingLinkInput onStart={(link) => navigate('/record', { state: { link } })} />
           </div>
 
-          {/* Upload Progress / Dropzone */}
           <AnimatePresence mode="wait">
             {isProcessingLocal && (
               <motion.div
@@ -312,7 +312,6 @@ export const Dashboard: React.FC = () => {
             )}
           </AnimatePresence>
 
-          {/* Recent Activity */}
           <div className="bg-white dark:bg-corporate-secondary border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
               <div className="flex items-center gap-2">
@@ -369,7 +368,6 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: Reminders */}
         <div className="space-y-8">
           <div className="bg-white dark:bg-corporate-secondary border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">

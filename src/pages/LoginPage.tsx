@@ -1,3 +1,8 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../components/AuthContext';
@@ -24,8 +29,8 @@ export const LoginPage: React.FC = () => {
             <Sparkles size={32} />
           </div>
           <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-              Smart AI Meeting Assistant
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white uppercase">
+              READMEET
             </h1>
             <p className="text-slate-500 dark:text-slate-400">
               Transform your meetings into actionable intelligence.

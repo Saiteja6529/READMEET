@@ -98,7 +98,7 @@ export const AIAssistantWidget: React.FC = () => {
                   <Sparkles size={14} className="text-white" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold">Meeting Assistant</h3>
+                  <h3 className="text-xs font-bold">How can READEMEET help?</h3>
                   <p className="text-[8px] opacity-70 uppercase tracking-widest">AI Agent Online</p>
                 </div>
               </div>
