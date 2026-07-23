@@ -5,14 +5,14 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { AppErrorType, mapBrowserErrorToAppError } from '../utils/ErrorHandler';
+import { RecordingStatus } from '../types';
 
-export type RecordingStatus = 'idle' | 'listening' | 'recording' | 'paused' | 'processing' | 'completed' | 'error';
 export type RecordingMode = 'microphone' | 'system' | 'meeting';
 
 interface UseAudioRecorderProps {
   onRecordingComplete: (blob: Blob, duration: number) => void;
   onDataAvailable?: (blob: Blob) => void;
-  onError: (errorType: AppErrorType) => void;
+  onError: (errorType: AppErrorType, customMessage?: string) => void;
 }
 
 export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError }: UseAudioRecorderProps) => {
@@ -28,11 +28,18 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const volumeIntervalRef = useRef<number | null>(null);
+  const recordingTimeRef = useRef<number>(0);
+  const isRecordingRef = useRef<boolean>(false);
+  const discardOnStopRef = useRef<boolean>(false);
   
   // Audio Context for Visualization
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Stream references to prevent unmount leaks
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const displayStreamRef = useRef<MediaStream | null>(null);
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) {
@@ -55,9 +62,19 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
       mediaRecorderRef.current.resume();
       setStatus('recording');
       timerRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
+        setRecordingTime((prev) => {
+          const next = prev + 1;
+          recordingTimeRef.current = next;
+          return next;
+        });
       }, 1000);
-      if (recognitionRef.current) recognitionRef.current.start();
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch (error) {
+          console.warn('Speech recognition failed to resume:', error);
+        }
+      }
     }
   }, []);
 
@@ -66,8 +83,16 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach(track => track.stop());
+      micStreamRef.current = null;
+    }
+    if (displayStreamRef.current) {
+      displayStreamRef.current.getTracks().forEach(track => track.stop());
+      displayStreamRef.current = null;
+    }
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close();
+      audioContextRef.current.close().catch(err => console.warn("Failed to close AudioContext:", err));
       audioContextRef.current = null;
     }
     if (volumeIntervalRef.current) {
@@ -75,16 +100,22 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
       volumeIntervalRef.current = null;
     }
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.abort();
+      } catch (_) {}
       recognitionRef.current = null;
     }
     analyserRef.current = null;
+    audioChunksRef.current = []; // Release compiled memory immediately
+    isRecordingRef.current = false;
   }, []);
 
   const startRecording = useCallback(async (mode: RecordingMode = 'microphone') => {
     try {
       setStatus('listening');
       setLiveTranscript('');
+      isRecordingRef.current = true;
+      discardOnStopRef.current = false;
       if (audioUrl) {
         URL.revokeObjectURL(audioUrl);
         setAudioUrl(null);
@@ -95,77 +126,148 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
       let displayStream: MediaStream | null = null;
 
       if (mode === 'meeting') {
-        // Capture both Mic and System Audio
+        if (!navigator.mediaDevices?.getDisplayMedia) {
+          onError(AppErrorType.UNKNOWN, 'Screen sharing (System Audio) is not supported in this browser or requires a secure HTTPS/localhost connection.');
+          setStatus('error');
+          cleanupAudio();
+          return false;
+        }
+        // ── Capture Microphone ──
         try {
-          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        } catch (err) {
-          throw new Error('Microphone access denied. Please allow microphone access to record meetings.');
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          micStreamRef.current = micStream;
+        } catch (err: any) {
+          const errType = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'
+            ? AppErrorType.MIC_PERMISSION_DENIED
+            : err.name === 'NotFoundError'
+            ? AppErrorType.MIC_NOT_FOUND
+            : AppErrorType.MIC_IN_USE;
+          onError(errType);
+          setStatus('error');
+          cleanupAudio();
+          return false;
         }
 
+        // ── Capture Display/System Audio ──
         try {
-          displayStream = await navigator.mediaDevices.getDisplayMedia({ 
-            video: true, 
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true
-            }
+          displayStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: true
           });
-          
+          displayStreamRef.current = displayStream;
+
           const audioTracks = displayStream.getAudioTracks();
           if (audioTracks.length === 0) {
             displayStream.getTracks().forEach(t => t.stop());
-            micStream.getTracks().forEach(t => t.stop());
-            throw new Error('No system audio selected. Please make sure to check "Share tab audio" or "Share system audio".');
+            micStream!.getTracks().forEach(t => t.stop());
+            micStreamRef.current = null;
+            displayStreamRef.current = null;
+            onError(AppErrorType.SCREEN_NO_AUDIO);
+            setStatus('error');
+            cleanupAudio();
+            return false;
           }
-          
-          // Stop video tracks immediately
+
+          // Stop video tracks — we only need the audio
           displayStream.getVideoTracks().forEach(track => track.stop());
         } catch (err: any) {
-          micStream.getTracks().forEach(t => t.stop());
-          if (err.name === 'NotAllowedError') {
-            throw new Error('System audio access denied. Please allow screen sharing with audio.');
+          if (micStream) {
+            micStream.getTracks().forEach(t => t.stop());
+            micStreamRef.current = null;
           }
-          throw err;
+          displayStreamRef.current = null;
+
+          if (err.name === 'AbortError' || err.name === 'NotAllowedError') {
+            // User closed the dialog or denied
+            onError(err.name === 'AbortError' ? AppErrorType.SCREEN_CANCELLED : AppErrorType.SCREEN_PERMISSION_DENIED);
+          } else {
+            onError(AppErrorType.SCREEN_PERMISSION_DENIED);
+          }
+          setStatus('error');
+          cleanupAudio();
+          return false;
         }
 
-        // Merge streams using AudioContext
+        // ── Merge streams via AudioContext ──
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
         const destination = audioContext.createMediaStreamDestination();
-        
-        const micSource = audioContext.createMediaStreamSource(micStream);
+        const micSource  = audioContext.createMediaStreamSource(micStream!);
         const displaySource = audioContext.createMediaStreamSource(displayStream);
-        
         micSource.connect(destination);
         displaySource.connect(destination);
-        
         stream = destination.stream;
         audioContextRef.current = audioContext;
-        
-        // Keep references for cleanup
+
+        // Keep refs for cleanup
         streamRef.current = new MediaStream([
-          ...micStream.getTracks(),
+          ...micStream!.getTracks(),
           ...displayStream.getTracks()
         ]);
+
       } else if (mode === 'system') {
-        stream = await navigator.mediaDevices.getDisplayMedia({ 
-          video: true, 
-          audio: true 
-        });
-        
-        // Ensure audio track exists
-        const audioTracks = stream.getAudioTracks();
-        if (audioTracks.length === 0) {
-          stream.getTracks().forEach(t => t.stop());
-          throw new Error('No system audio selected. Please make sure to check "Share tab audio".');
+        if (!navigator.mediaDevices?.getDisplayMedia) {
+          onError(AppErrorType.UNKNOWN, 'Screen sharing (System Audio) is not supported in this browser or requires a secure HTTPS/localhost connection.');
+          setStatus('error');
+          cleanupAudio();
+          return false;
         }
-        
-        // Stop video tracks as we only need audio
-        stream.getVideoTracks().forEach(track => track.stop());
-        streamRef.current = stream;
+        // ── Capture System Audio only via getDisplayMedia ──
+        try {
+          displayStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: true
+          });
+          displayStreamRef.current = displayStream;
+
+          const audioTracks = displayStream.getAudioTracks();
+          if (audioTracks.length === 0) {
+            displayStream.getTracks().forEach(t => t.stop());
+            displayStreamRef.current = null;
+            onError(AppErrorType.SCREEN_NO_AUDIO);
+            setStatus('error');
+            cleanupAudio();
+            return false;
+          }
+
+          // Stop video tracks — we only need the audio
+          displayStream.getVideoTracks().forEach(track => track.stop());
+          stream = new MediaStream(audioTracks);
+          streamRef.current = stream;
+        } catch (err: any) {
+          displayStreamRef.current = null;
+          if (err.name === 'AbortError') {
+            onError(AppErrorType.SCREEN_CANCELLED);
+          } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            onError(AppErrorType.SCREEN_PERMISSION_DENIED);
+          } else {
+            onError(AppErrorType.SCREEN_PERMISSION_DENIED);
+          }
+          setStatus('error');
+          cleanupAudio();
+          return false;
+        }
+
       } else {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        streamRef.current = stream;
+        // ── Microphone only ──
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          micStreamRef.current = stream;
+          streamRef.current = stream;
+        } catch (err: any) {
+          const errType = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'
+            ? AppErrorType.MIC_PERMISSION_DENIED
+            : err.name === 'NotFoundError'
+            ? AppErrorType.MIC_NOT_FOUND
+            : err.name === 'NotReadableError'
+            ? AppErrorType.MIC_IN_USE
+            : err.name === 'SecurityError'
+            ? AppErrorType.MIC_SECURITY_ERROR
+            : AppErrorType.REC_DEVICE_ERROR;
+          onError(errType);
+          setStatus('error');
+          cleanupAudio();
+          return false;
+        }
       }
       
       // Setup Web Speech API for live transcription
@@ -177,17 +279,17 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
         recognition.lang = 'en-US';
 
         recognition.onresult = (event: any) => {
-          let interimTranscript = '';
           let finalTranscript = '';
+          let interimTranscript = '';
 
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
+          for (let i = 0; i < event.results.length; ++i) {
             if (event.results[i].isFinal) {
-              finalTranscript += event.results[i][0].transcript;
+              finalTranscript += event.results[i][0].transcript + ' ';
             } else {
               interimTranscript += event.results[i][0].transcript;
             }
           }
-          setLiveTranscript(prev => prev + finalTranscript + interimTranscript);
+          setLiveTranscript(finalTranscript.trim() + (interimTranscript ? ' ... ' + interimTranscript : ''));
         };
 
         recognition.onerror = (event: any) => {
@@ -219,7 +321,7 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
       // Volume detection
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       const updateVolume = () => {
-        if (status === 'completed' || status === 'error') return;
+        if (!isRecordingRef.current) return;
         analyser.getByteFrequencyData(dataArray);
         let sum = 0;
         for (let i = 0; i < dataArray.length; i++) {
@@ -259,6 +361,17 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
 
           mediaRecorder.onstop = () => {
             const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            const shouldDiscard = discardOnStopRef.current;
+            discardOnStopRef.current = false;
+
+            if (shouldDiscard) {
+              cleanupAudio();
+              setVolume(0);
+              setIsSpeaking(false);
+              setStatus('idle');
+              return;
+            }
+
             const url = URL.createObjectURL(audioBlob);
             setAudioUrl(url);
 
@@ -266,7 +379,7 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
                onError(AppErrorType.REC_TOO_SHORT);
                setStatus('error');
             } else {
-               onRecordingComplete(audioBlob, recordingTime);
+               onRecordingComplete(audioBlob, recordingTimeRef.current);
                setStatus('completed');
             }
             cleanupAudio();
@@ -278,6 +391,8 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
             console.error('MediaRecorder error:', event.error);
             onError(AppErrorType.REC_DEVICE_ERROR);
             setStatus('error');
+            stopTimer();
+            cleanupAudio();
           };
 
           // Handle tracks ending (e.g. user stops sharing)
@@ -291,11 +406,17 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
 
           mediaRecorder.start(1000); // Collect data every second for stability
           setStatus('recording');
+          recordingTimeRef.current = 0;
           setRecordingTime(0);
           
           timerRef.current = setInterval(() => {
-            setRecordingTime((prev) => prev + 1);
+            setRecordingTime((prev) => {
+              const next = prev + 1;
+              recordingTimeRef.current = next;
+              return next;
+            });
           }, 1000);
+          return true;
         } catch (recorderErr) {
           console.error('Failed to start MediaRecorder:', recorderErr);
           throw recorderErr;
@@ -306,80 +427,101 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
 
     } catch (err: any) {
       console.error('Recording start error:', err);
-      const errorType = mapBrowserErrorToAppError(err);
-      onError(errorType);
+      const errorMsg = err?.message || 'An unexpected error occurred';
+      if (errorMsg.includes('getDisplayMedia')) {
+        onError(AppErrorType.UNKNOWN, 'Screen sharing is not available in your current environment. Try using Chrome/Edge on Desktop over localhost or HTTPS.');
+      } else {
+        const errorType = mapBrowserErrorToAppError(err);
+        onError(errorType, errorType === AppErrorType.UNKNOWN ? `Error: ${errorMsg}` : undefined);
+      }
       setStatus('error');
       cleanupAudio();
+      return false;
     }
-  }, [onRecordingComplete, onDataAvailable, onError, cleanupAudio, audioUrl]);
+  }, [onRecordingComplete, onDataAvailable, onError, cleanupAudio, audioUrl, stopTimer]);
 
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+  const stopRecording = useCallback((discard = false) => {
+    if (discard) {
+      discardOnStopRef.current = true;
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
       stopTimer();
-      setStatus('processing');
+      setStatus(discard ? 'idle' : 'processing');
+      return;
     }
-  }, [stopTimer]);
+
+    stopTimer();
+    cleanupAudio();
+    if (discard) setStatus('idle');
+  }, [cleanupAudio, stopTimer]);
 
   const convertToWav = async (audioBlob: Blob): Promise<Blob> => {
     const arrayBuffer = await audioBlob.arrayBuffer();
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    
-    const numChannels = audioBuffer.numberOfChannels;
-    const sampleRate = audioBuffer.sampleRate;
-    const format = 1; // PCM
-    const bitDepth = 16;
-    
-    const bytesPerSample = bitDepth / 8;
-    const blockAlign = numChannels * bytesPerSample;
-    
-    const buffer = new ArrayBuffer(44 + audioBuffer.length * blockAlign);
-    const view = new DataView(buffer);
-    
-    /* RIFF identifier */
-    writeString(view, 0, 'RIFF');
-    /* RIFF chunk length */
-    view.setUint32(4, 36 + audioBuffer.length * blockAlign, true);
-    /* RIFF type */
-    writeString(view, 8, 'WAVE');
-    /* format chunk identifier */
-    writeString(view, 12, 'fmt ');
-    /* format chunk length */
-    view.setUint32(16, 16, true);
-    /* sample format (raw) */
-    view.setUint16(20, format, true);
-    /* channel count */
-    view.setUint16(22, numChannels, true);
-    /* sample rate */
-    view.setUint32(24, sampleRate, true);
-    /* byte rate (sample rate * block align) */
-    view.setUint32(28, sampleRate * blockAlign, true);
-    /* block align (channel count * bytes per sample) */
-    view.setUint16(32, blockAlign, true);
-    /* bits per sample */
-    view.setUint16(34, bitDepth, true);
-    /* data chunk identifier */
-    writeString(view, 36, 'data');
-    /* data chunk length */
-    view.setUint32(40, audioBuffer.length * blockAlign, true);
-    
-    const offset = 44;
-    const channelData = [];
-    for (let i = 0; i < numChannels; i++) {
-      channelData.push(audioBuffer.getChannelData(i));
-    }
-    
-    let index = 0;
-    for (let i = 0; i < audioBuffer.length; i++) {
-      for (let channel = 0; channel < numChannels; channel++) {
-        const sample = Math.max(-1, Math.min(1, channelData[channel][i]));
-        view.setInt16(offset + index * bytesPerSample, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-        index++;
+    try {
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+      const numChannels = audioBuffer.numberOfChannels;
+      const sampleRate = audioBuffer.sampleRate;
+      const format = 1; // PCM
+      const bitDepth = 16;
+
+      const bytesPerSample = bitDepth / 8;
+      const blockAlign = numChannels * bytesPerSample;
+
+      const buffer = new ArrayBuffer(44 + audioBuffer.length * blockAlign);
+      const view = new DataView(buffer);
+
+      /* RIFF identifier */
+      writeString(view, 0, 'RIFF');
+      /* RIFF chunk length */
+      view.setUint32(4, 36 + audioBuffer.length * blockAlign, true);
+      /* RIFF type */
+      writeString(view, 8, 'WAVE');
+      /* format chunk identifier */
+      writeString(view, 12, 'fmt ');
+      /* format chunk length */
+      view.setUint32(16, 16, true);
+      /* sample format (raw) */
+      view.setUint16(20, format, true);
+      /* channel count */
+      view.setUint16(22, numChannels, true);
+      /* sample rate */
+      view.setUint32(24, sampleRate, true);
+      /* byte rate (sample rate * block align) */
+      view.setUint32(28, sampleRate * blockAlign, true);
+      /* block align (channel count * bytes per sample) */
+      view.setUint16(32, blockAlign, true);
+      /* bits per sample */
+      view.setUint16(34, bitDepth, true);
+      /* data chunk identifier */
+      writeString(view, 36, 'data');
+      /* data chunk length */
+      view.setUint32(40, audioBuffer.length * blockAlign, true);
+
+      const offset = 44;
+      const channelData = [];
+      for (let i = 0; i < numChannels; i++) {
+        channelData.push(audioBuffer.getChannelData(i));
+      }
+
+      let index = 0;
+      for (let i = 0; i < audioBuffer.length; i++) {
+        for (let channel = 0; channel < numChannels; channel++) {
+          const sample = Math.max(-1, Math.min(1, channelData[channel][i]));
+          view.setInt16(offset + index * bytesPerSample, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+          index++;
+        }
+      }
+
+      return new Blob([buffer], { type: 'audio/wav' });
+    } finally {
+      if (audioContext.state !== 'closed') {
+        await audioContext.close().catch(err => console.warn("Failed to close conversion AudioContext:", err));
       }
     }
-    
-    return new Blob([buffer], { type: 'audio/wav' });
   };
 
   function writeString(view: DataView, offset: number, string: string) {

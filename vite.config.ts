@@ -8,7 +8,29 @@ export default defineConfig(({mode}) => {
   return {
     plugins: [react(), tailwindcss()],
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || ''),
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('react') || id.includes('scheduler') || id.includes('react-router') || id.includes('react-dom') || id.includes('react-router-dom')) {
+                return 'vendor-core';
+              }
+              if (id.includes('@google/genai') || id.includes('@google/generative-ai') || id.includes('googleapis')) {
+                return 'vendor-google';
+              }
+              if (id.includes('motion') || id.includes('framer-motion')) {
+                return 'vendor-motion';
+              }
+              if (id.includes('lucide-react')) {
+                return 'vendor-lucide';
+              }
+            }
+          }
+        }
+      }
     },
     resolve: {
       alias: {

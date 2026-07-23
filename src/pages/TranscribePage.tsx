@@ -22,12 +22,12 @@ import { LiveTranscript } from '../components/LiveTranscript';
 import { useLoading } from '../hooks/useLoading';
 import { useToast } from '../hooks/useToast';
 import { geminiService } from '../services/geminiService';
-import { AppErrorType, getErrorMessage } from '../utils/ErrorHandler';
+import { AppErrorType, getErrorMessage, getSafeProcessingErrorMessage, mapProcessingErrorToAppError } from '../utils/ErrorHandler';
 
 export const TranscribePage: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { setIsRecording, setIsProcessing, setGlobalProgress } = useLoading();
+  const { setIsProcessing, setGlobalProgress } = useLoading();
   
   const [status, setStatus] = useState<'idle' | 'recording' | 'processing' | 'completed' | 'error'>('idle');
   const [appError, setAppError] = useState<string | null>(null);
@@ -47,7 +47,6 @@ export const TranscribePage: React.FC = () => {
     onRecordingComplete: (blob) => handleTranscription(blob),
     onError: (type) => {
       setAppError(getErrorMessage(type));
-      setIsRecording(false);
       setStatus('error');
     }
   });
@@ -58,11 +57,16 @@ export const TranscribePage: React.FC = () => {
     setGlobalProgress(30);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY || (import.meta as any).env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       if (!apiKey) throw new Error("API Key missing");
 
       setGlobalProgress(60);
-      const wavBlob = await convertToWav(audioBlob);
+      let wavBlob = audioBlob;
+      try {
+        wavBlob = await convertToWav(audioBlob);
+      } catch (convErr) {
+        console.warn("WAV conversion warning, using raw blob:", convErr);
+      }
       
       const transcript = await geminiService.transcribeOnly(wavBlob, apiKey);
       
@@ -71,7 +75,8 @@ export const TranscribePage: React.FC = () => {
       showToast('Transcription completed');
     } catch (err: any) {
       console.error(err);
-      setAppError(err.message || "Transcription failed");
+      const errorType = mapProcessingErrorToAppError(err);
+      setAppError(getSafeProcessingErrorMessage(err, errorType));
       setStatus('error');
     } finally {
       setIsProcessing(false);
@@ -147,7 +152,6 @@ export const TranscribePage: React.FC = () => {
                       onClick={() => {
                         startRec();
                         setStatus('recording');
-                        setIsRecording(true);
                       }}
                       className="w-full max-w-sm bg-corporate-primary text-white py-4 rounded-xl flex items-center justify-center gap-3 font-bold uppercase tracking-widest hover:opacity-90 transition-all shadow-lg"
                     >
@@ -158,7 +162,6 @@ export const TranscribePage: React.FC = () => {
                     <button
                       onClick={() => {
                         stopRec();
-                        setIsRecording(false);
                       }}
                       className="w-full max-w-sm bg-red-600 text-white py-4 rounded-xl flex items-center justify-center gap-3 font-bold uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg"
                     >

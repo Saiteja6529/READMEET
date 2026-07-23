@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useMeetingHistory } from '../hooks/useMeetingHistory';
 import { useToast } from '../hooks/useToast';
 import { geminiService } from '../services/geminiService';
+import { AppErrorType, getSafeProcessingErrorMessage, mapProcessingErrorToAppError } from '../utils/ErrorHandler';
 import { MeetingNote } from '../types';
 
 export const PasteAnalysisPage: React.FC = () => {
@@ -38,7 +39,7 @@ export const PasteAnalysisPage: React.FC = () => {
     setError(null);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY || (import.meta as any).env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       if (!apiKey) throw new Error("API Key missing");
 
       const data = await geminiService.processTranscript(transcript, apiKey);
@@ -71,7 +72,8 @@ export const PasteAnalysisPage: React.FC = () => {
       navigate(`/meeting/${newNote.id}`);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Analysis failed. Please try again.');
+      const errorType = mapProcessingErrorToAppError(err);
+      setError(getSafeProcessingErrorMessage(err, errorType));
     } finally {
       setIsProcessing(false);
     }

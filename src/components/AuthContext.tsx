@@ -39,7 +39,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Fallback to localStorage if server check fails (offline/dev)
       const savedUser = localStorage.getItem('auth_user');
       if (savedUser) {
-        setUser(JSON.parse(savedUser));
+        try {
+          setUser(JSON.parse(savedUser));
+        } catch (e) {
+          console.error("Failed to parse saved auth_user:", e);
+          localStorage.removeItem('auth_user');
+        }
       }
     } finally {
       setLoading(false);
@@ -50,6 +55,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     checkAuthStatus();
 
     const handleMessage = (event: MessageEvent) => {
+      // Validate origin matches our own frontend origin
+      if (event.origin !== window.location.origin) {
+        return;
+      }
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
         if (event.data.user) {
           setUser(event.data.user);
@@ -68,8 +77,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const response = await fetch('/api/auth/google/url');
       if (!response.ok) throw new Error('Failed to get auth URL');
-      const { url } = await response.json();
+      const data = await response.json();
       
+      // If we are in demo mode (missing Google client ID)
+      if (data.isDemo || !data.url) {
+        const demoRes = await fetch('/api/auth/login-demo', { method: 'POST' });
+        if (demoRes.ok) {
+          const demoData = await demoRes.json();
+          setUser(demoData.user);
+          localStorage.setItem('auth_user', JSON.stringify(demoData.user));
+          window.location.href = '/dashboard';
+        }
+        return;
+      }
+
+      const url = data.url;
       const width = 500;
       const height = 600;
       const left = window.screenX + (window.outerWidth - width) / 2;
@@ -81,7 +103,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         `width=${width},height=${height},left=${left},top=${top}`
       );
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('Login error, attempting demo fallback:', error);
+      try {
+        const demoRes = await fetch('/api/auth/login-demo', { method: 'POST' });
+        if (demoRes.ok) {
+          const demoData = await demoRes.json();
+          setUser(demoData.user);
+          localStorage.setItem('auth_user', JSON.stringify(demoData.user));
+          window.location.href = '/dashboard';
+        }
+      } catch (e) {
+        console.error('Demo authentication fallback failed:', e);
+      }
     }
   };
 
@@ -92,8 +125,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.error('Logout error:', error);
     } finally {
       setUser(null);
-      localStorage.clear();
-      sessionStorage.clear();
+      localStorage.removeItem('auth_user');
+      sessionStorage.removeItem('auth_user');
       window.location.href = '/login';
     }
   };

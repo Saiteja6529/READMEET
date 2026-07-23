@@ -44,4 +44,6 @@ export interface AnalyticsData {
   commonKeywords: { word: string; count: number }[];
 }
 
-export type RecordingStatus = 'idle' | 'listening' | 'recording' | 'processing' | 'completed' | 'error';
+export type RecordingStatus = 'idle' | 'listening' | 'recording' | 'paused' | 'processing' | 'completed' | 'error';
+
+export type AnalysisStep = 'uploading' | 'processing' | 'transcribing' | 'summarizing' | 'extracting' | 'completed';

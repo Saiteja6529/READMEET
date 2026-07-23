@@ -64,12 +64,24 @@ export const AIAssistantWidget: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) throw new Error("API Key missing");
+      const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY || (import.meta as any).env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          text: "⚠️ AI Assistant is unavailable: The Gemini API key (VITE_GEMINI_API_KEY) is not configured. Please add it to your .env file and restart the server." 
+        }]);
+        return;
+      }
       const response = await geminiService.askAssistant(context, userMsg, apiKey);
       setMessages(prev => [...prev, { role: 'assistant', text: response }]);
-    } catch (error) {
-      setMessages(prev => [...prev, { role: 'assistant', text: "I'm sorry, I encountered an error processing your request." }]);
+    } catch (error: any) {
+      const isAuthError = error?.message?.includes('API_KEY') || error?.message?.includes('401') || error?.message?.includes('403');
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        text: isAuthError 
+          ? "⚠️ Invalid or expired API key. Please verify your VITE_GEMINI_API_KEY in the .env file." 
+          : "I encountered an error processing your request. Please try again in a moment." 
+      }]);
     } finally {
       setIsLoading(false);
     }

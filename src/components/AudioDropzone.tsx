@@ -6,7 +6,7 @@
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, FileAudio, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface AudioDropzoneProps {
   onFileAccepted: (file: File) => void;

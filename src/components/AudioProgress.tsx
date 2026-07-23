@@ -6,14 +6,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { CheckCircle2, Loader2 } from 'lucide-react';
-
-export type AnalysisStep = 
-  | 'uploading'
-  | 'processing'
-  | 'transcribing'
-  | 'summarizing'
-  | 'extracting'
-  | 'completed';
+import { AnalysisStep } from '../types';
 
 interface AudioProgressProps {
   currentStep: AnalysisStep;
@@ -31,20 +24,26 @@ const steps: { id: AnalysisStep; label: string }[] = [
 
 export const AudioProgress: React.FC<AudioProgressProps> = ({ currentStep, progress }) => {
   const currentStepIndex = steps.findIndex(s => s.id === currentStep);
+  const isCompleted = currentStep === 'completed';
 
   return (
     <div className="w-full max-w-md mx-auto space-y-6 p-6 bg-white dark:bg-corporate-secondary border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl">
-      {/* Wave Animation */}
+      {/* Wave Animation - Stopped when completed to save CPU cycles */}
       <div className="flex items-center justify-center gap-1 h-8 opacity-50">
         {[...Array(12)].map((_, i) => (
           <motion.div
             key={i}
             className="w-1 bg-corporate-accent rounded-full"
-            animate={{ 
+            animate={isCompleted ? { 
+              height: 8,
+              opacity: 0.5 
+            } : { 
               height: [8, 24, 8],
               opacity: [0.5, 1, 0.5]
             }}
-            transition={{ 
+            transition={isCompleted ? { 
+              duration: 0.2 
+            } : { 
               duration: 1, 
               repeat: Infinity, 
               delay: i * 0.1,

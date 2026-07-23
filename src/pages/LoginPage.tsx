@@ -3,26 +3,34 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/AuthContext';
 import { Sparkles, ShieldCheck, Zap, Clock } from 'lucide-react';
-import { motion } from 'framer-motion'; // Ensure this matches your package name (framer-motion or motion)
+import { motion } from 'motion/react'; 
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  // We keep the hook but we will ignore its 'isAuthenticated' value for the Expo demo bypass
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, login } = useAuth();
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // EXPO BYPASS: If for some reason the app thinks we are already authed, go to dashboard
+  // If already authenticated, redirect to dashboard
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const handleExpoLogin = () => {
-    // Direct navigation bypass for the National Expo
-    console.log("Expo Mode: Bypassing OAuth Handshake...");
-    navigate('/dashboard');
+  const handleLoginClick = async () => {
+    setErrorMsg(null);
+    setIsLoggingIn(true);
+    try {
+      await login();
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || 'Authentication encountered an error. Please try again.');
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   return (
@@ -48,19 +56,29 @@ export const LoginPage: React.FC = () => {
 
         <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 space-y-6">
           <div className="space-y-4">
-            {/* EXPO CHANGE: We've replaced the real GoogleAuth component with a 
-               custom button that looks the same but triggers the bypass.
-            */}
+            {errorMsg && (
+              <div aria-live="polite" className="p-3 text-sm text-red-600 bg-red-50 dark:bg-red-950/30 dark:text-red-400 rounded-xl border border-red-100 dark:border-red-900/50">
+                {errorMsg}
+              </div>
+            )}
+            
             <button 
-              onClick={handleExpoLogin}
-              className="w-full flex items-center justify-center gap-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all shadow-sm"
+              onClick={handleLoginClick}
+              disabled={isLoggingIn}
+              className="w-full flex items-center justify-center gap-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-              <span className="font-semibold text-slate-700 dark:text-slate-200">Sign in with Google</span>
+              {isLoggingIn ? (
+                <div className="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+              )}
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                {isLoggingIn ? 'Signing in...' : 'Sign in with Google'}
+              </span>
             </button>
             
             <p className="text-[10px] text-center text-slate-400 uppercase tracking-widest font-bold">
-              Secure authentication via Google
+              Secure authentication via Google / Fallback
             </p>
           </div>
 

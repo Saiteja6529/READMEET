@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { AlertCircle, MicOff, WifiOff, ServerCrash, Ghost } from 'lucide-react';
+import { AlertCircle, MicOff, WifiOff, ServerCrash, Ghost, MonitorOff, XCircle, Volume2 } from 'lucide-react';
 import { AppErrorType } from '../utils/ErrorHandler';
 
 interface ProfessionalErrorCardProps {
@@ -22,7 +22,13 @@ export const ProfessionalErrorCard: React.FC<ProfessionalErrorCardProps> = ({
     switch (type) {
       case AppErrorType.MIC_PERMISSION_DENIED:
       case AppErrorType.MIC_NOT_FOUND:
+      case AppErrorType.MIC_IN_USE:
         return <MicOff size={32} />;
+      case AppErrorType.SCREEN_PERMISSION_DENIED:
+      case AppErrorType.SCREEN_CANCELLED:
+        return <MonitorOff size={32} />;
+      case AppErrorType.SCREEN_NO_AUDIO:
+        return <Volume2 size={32} />;
       case AppErrorType.NET_OFFLINE:
         return <WifiOff size={32} />;
       case AppErrorType.NET_SERVER_ERROR:
@@ -30,6 +36,8 @@ export const ProfessionalErrorCard: React.FC<ProfessionalErrorCardProps> = ({
         return <ServerCrash size={32} />;
       case AppErrorType.REC_NO_SPEECH:
         return <Ghost size={32} />;
+      case AppErrorType.REC_STREAM_INACTIVE:
+        return <XCircle size={32} />;
       default:
         return <AlertCircle size={32} />;
     }

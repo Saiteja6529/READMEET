@@ -1,10 +1,10 @@
 # GitHub Agentic Workspace - Implementation Guide
 
-## 🎯 Overview
+##  Overview
 
 The **GitHub Agentic Workspace** is a conversational AI-powered feature that allows users to create or update GitHub repository README files through an intelligent interview process. The AI assistant guides users through gathering project information and generates professional, well-structured README content.
 
-## 🏗️ Architecture
+##  Architecture
 
 ### Tech Stack
 - **Frontend**: React 19, TypeScript, Vite
@@ -101,7 +101,7 @@ Location: `src/components/GitHubManager.tsx`
 - Smooth animations with Motion
 - Dark mode support
 
-## 🔄 Workflow Details
+##  Workflow Details
 
 ### CREATE Mode Flow
 
@@ -150,7 +150,7 @@ Location: `src/components/GitHubManager.tsx`
 7. [Same as CREATE mode steps 6-10]
 ```
 
-## 🛠️ Backend Integration
+##  Backend Integration
 
 ### GitHub MCP Proxy Endpoint
 Location: `server.ts`
@@ -171,7 +171,7 @@ app.post("/api/github/proxy", async (req, res) => {
 - `create_or_update_file`: Creates or updates file on GitHub
 - Requires `GITHUB_TOKEN` environment variable
 
-## 🎨 UI/UX Design Principles
+##  UI/UX Design Principles
 
 ### Visual Hierarchy
 - **Blue**: AI assistant messages and thinking states
@@ -191,7 +191,7 @@ app.post("/api/github/proxy", async (req, res) => {
 - Confirmation dialogs for destructive actions
 - Keyboard navigation support
 
-## 📝 Environment Variables
+##  Environment Variables
 
 Required in `.env`:
 ```bash
@@ -199,7 +199,7 @@ VITE_GEMINI_API_KEY=your_gemini_api_key
 GITHUB_TOKEN=your_github_personal_access_token
 ```
 
-## 🚀 Usage Example
+##  Usage Example
 
 ### Creating a New README
 
@@ -225,9 +225,9 @@ GITHUB_TOKEN=your_github_personal_access_token
 
 10. User clicks "I'm Satisfied - Publish to GitHub"
 
-11. README is published! ✅
+11. README is published! 
 
-## 🔧 Customization
+##  Customization
 
 ### Modifying AI Behavior
 Edit the `systemInstruction` in `GitHubModel.ts`:
@@ -253,7 +253,7 @@ Add new function declarations to the `tools` array:
 - Component styles: Tailwind classes in `GitHubManager.tsx`
 - Dark mode: Uses Tailwind's `dark:` variant
 
-## 🐛 Troubleshooting
+##  Troubleshooting
 
 ### Common Issues
 
@@ -276,7 +276,7 @@ Add new function declarations to the `tools` array:
 - Check tool definitions use `SchemaType` enum
 - Verify callback functions in `useGitHubChat.ts`
 
-## 📊 Testing Checklist
+##  Testing Checklist
 
 - [ ] CREATE mode: AI interviews before using tools
 - [ ] UPDATE mode: AI reads existing README first
@@ -289,7 +289,7 @@ Add new function declarations to the `tools` array:
 - [ ] Dark mode works properly
 - [ ] Mobile responsive layout
 
-## 🎓 Key Learnings
+##  Key Learnings
 
 ### Why SchemaType Enum?
 Using `SchemaType.OBJECT` and `SchemaType.STRING` instead of plain strings prevents JSON schema validation errors in the Gemini API.
@@ -307,7 +307,7 @@ Maintaining a `messages` array allows:
 - Debugging conversation flow
 - Future feature: Export chat history
 
-## 🔮 Future Enhancements
+##  Future Enhancements
 
 1. **Multi-file Support**: Edit multiple files in one session
 2. **Template Library**: Pre-built README templates
@@ -318,7 +318,7 @@ Maintaining a `messages` array allows:
 7. **Custom Sections**: Let users define custom README sections
 8. **AI Suggestions**: Proactive improvement suggestions
 
-## 📚 References
+##  References
 
 - [Google Gemini API Docs](https://ai.google.dev/docs)
 - [MCP Protocol](https://modelcontextprotocol.io/)
@@ -328,4 +328,4 @@ Maintaining a `messages` array allows:
 
 ---
 
-**Built with ❤️ using AI-powered development**
+**Built with using AI-powered development**

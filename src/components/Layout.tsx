@@ -9,7 +9,7 @@ import {
   Sparkles,
   Menu,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useLoading } from '../hooks/useLoading';
 import { AIAssistantWidget } from './AIAssistantWidget';
 import { Sidebar } from './Sidebar';

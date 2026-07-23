@@ -1,57 +1,51 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-
-interface LoadingContextType {
-  isRecording: boolean;
-  setIsRecording: (val: boolean) => void;
-  isUploading: boolean;
-  setIsUploading: (val: boolean) => void;
-  isProcessing: boolean;
-  setIsProcessing: (val: boolean) => void;
-  isTranscribing: boolean;
-  setIsTranscribing: (val: boolean) => void;
-  isSummarizing: boolean;
-  setIsSummarizing: (val: boolean) => void;
-  isExtracting: boolean;
-  setIsExtracting: (val: boolean) => void;
-  globalProgress: number;
-  setGlobalProgress: (val: number) => void;
-}
-
-const LoadingContext = createContext<LoadingContextType | undefined>(undefined);
-
-export const LoadingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isRecording, setIsRecording] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [isSummarizing, setIsSummarizing] = useState(false);
-  const [isExtracting, setIsExtracting] = useState(false);
-  const [globalProgress, setGlobalProgress] = useState(0);
-
-  return (
-    <LoadingContext.Provider value={{
-      isRecording, setIsRecording,
-      isUploading, setIsUploading,
-      isProcessing, setIsProcessing,
-      isTranscribing, setIsTranscribing,
-      isSummarizing, setIsSummarizing,
-      isExtracting, setIsExtracting,
-      globalProgress, setGlobalProgress
-    }}>
-      {children}
-    </LoadingContext.Provider>
-  );
-};
+import React, { useContext } from 'react';
+import { LoadingContext } from '../contexts/LoadingContext';
 
 export const useLoading = () => {
-  const context = useContext(LoadingContext);
-  if (!context) {
+  const ctx = useContext(LoadingContext);
+  if (!ctx) {
     throw new Error('useLoading must be used within a LoadingProvider');
   }
-  return context;
+  const { state, dispatch } = ctx;
+  const isUploading = state.step === 'uploading';
+  const isProcessing = state.step === 'processing';
+  const isTranscribing = state.step === 'transcribing';
+  const isSummarizing = state.step === 'summarizing';
+  const isExtracting = state.step === 'extracting';
+  const globalProgress = state.progress;
+
+  const setIsUploading = (value: boolean) => {
+    dispatch({ type: 'SET_STEP', step: value ? 'uploading' : 'idle' });
+  };
+  const setIsProcessing = (value: boolean) => {
+    dispatch({ type: 'SET_STEP', step: value ? 'processing' : 'idle' });
+  };
+  const setIsTranscribing = (value: boolean) => {
+    dispatch({ type: 'SET_STEP', step: value ? 'transcribing' : 'idle' });
+  };
+  const setIsSummarizing = (value: boolean) => {
+    dispatch({ type: 'SET_STEP', step: value ? 'summarizing' : 'idle' });
+  };
+  const setIsExtracting = (value: boolean) => {
+    dispatch({ type: 'SET_STEP', step: value ? 'extracting' : 'idle' });
+  };
+  const setGlobalProgress = (value: number) => {
+    dispatch({ type: 'SET_PROGRESS', progress: value });
+  };
+
+  return {
+    isUploading,
+    isProcessing,
+    isTranscribing,
+    isSummarizing,
+    isExtracting,
+    globalProgress,
+    setIsUploading,
+    setIsProcessing,
+    setIsTranscribing,
+    setIsSummarizing,
+    setIsExtracting,
+    setGlobalProgress,
+  };
 };
+
