@@ -81,7 +81,7 @@ export const Dashboard: React.FC = () => {
         setGlobalProgress(30);
       }, 500);
 
-      const data = await geminiService.processAudio(file, apiKey);
+      const data = await geminiService.processAudio(file, apiKey, file.name);
 
       const getDuration = (): Promise<string> => {
         return new Promise((resolve) => {

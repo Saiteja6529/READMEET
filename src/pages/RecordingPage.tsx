@@ -178,7 +178,7 @@ export const RecordingPage: React.FC = () => {
       setIsTranscribing(true);
       setTimeout(() => { setAnalysisStep('transcribing'); setAnalysisProgress(50); setGlobalProgress(50); }, 1000);
 
-      const data = await geminiService.processAudio(wavBlob, apiKey);
+      const data = await geminiService.processAudio(wavBlob, apiKey, liveTranscript);
       setIsTranscribing(false);
 
       setIsSummarizing(true);

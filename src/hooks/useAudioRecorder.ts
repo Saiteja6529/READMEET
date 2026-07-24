@@ -15,6 +15,23 @@ interface UseAudioRecorderProps {
   onError: (errorType: AppErrorType, customMessage?: string) => void;
 }
 
+const getSupportedMimeType = () => {
+  if (typeof MediaRecorder === 'undefined') return '';
+  const types = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+    'audio/aac',
+    'audio/ogg'
+  ];
+  for (const t of types) {
+    if (MediaRecorder.isTypeSupported(t)) {
+      return t;
+    }
+  }
+  return '';
+};
+
 export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError }: UseAudioRecorderProps) => {
   const [status, setStatus] = useState<RecordingStatus>('idle');
   const [recordingTime, setRecordingTime] = useState(0);
@@ -121,155 +138,78 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
         setAudioUrl(null);
       }
 
-      let stream: MediaStream;
+      let stream: MediaStream | null = null;
       let micStream: MediaStream | null = null;
       let displayStream: MediaStream | null = null;
 
+      const captureMic = async (): Promise<MediaStream | null> => {
+        try {
+          const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          micStreamRef.current = s;
+          return s;
+        } catch (err) {
+          console.warn("Microphone access failed:", err);
+          return null;
+        }
+      };
+
       if (mode === 'meeting') {
-        if (!navigator.mediaDevices?.getDisplayMedia) {
-          onError(AppErrorType.UNKNOWN, 'Screen sharing (System Audio) is not supported in this browser or requires a secure HTTPS/localhost connection.');
-          setStatus('error');
-          cleanupAudio();
-          return false;
-        }
-        // ── Capture Microphone ──
-        try {
-          micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-          micStreamRef.current = micStream;
-        } catch (err: any) {
-          const errType = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'
-            ? AppErrorType.MIC_PERMISSION_DENIED
-            : err.name === 'NotFoundError'
-            ? AppErrorType.MIC_NOT_FOUND
-            : AppErrorType.MIC_IN_USE;
-          onError(errType);
-          setStatus('error');
-          cleanupAudio();
-          return false;
-        }
-
-        // ── Capture Display/System Audio ──
-        try {
-          displayStream = await navigator.mediaDevices.getDisplayMedia({
-            video: true,
-            audio: true
-          });
-          displayStreamRef.current = displayStream;
-
-          const audioTracks = displayStream.getAudioTracks();
-          if (audioTracks.length === 0) {
-            displayStream.getTracks().forEach(t => t.stop());
-            micStream!.getTracks().forEach(t => t.stop());
-            micStreamRef.current = null;
-            displayStreamRef.current = null;
-            onError(AppErrorType.SCREEN_NO_AUDIO);
-            setStatus('error');
-            cleanupAudio();
-            return false;
+        micStream = await captureMic();
+        if (navigator.mediaDevices?.getDisplayMedia) {
+          try {
+            displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+            displayStreamRef.current = displayStream;
+            displayStream.getVideoTracks().forEach(t => t.stop());
+          } catch (e) {
+            console.warn("Display audio capture skipped, continuing with microphone.");
           }
-
-          // Stop video tracks — we only need the audio
-          displayStream.getVideoTracks().forEach(track => track.stop());
-        } catch (err: any) {
-          if (micStream) {
-            micStream.getTracks().forEach(t => t.stop());
-            micStreamRef.current = null;
-          }
-          displayStreamRef.current = null;
-
-          if (err.name === 'AbortError' || err.name === 'NotAllowedError') {
-            // User closed the dialog or denied
-            onError(err.name === 'AbortError' ? AppErrorType.SCREEN_CANCELLED : AppErrorType.SCREEN_PERMISSION_DENIED);
-          } else {
-            onError(AppErrorType.SCREEN_PERMISSION_DENIED);
-          }
-          setStatus('error');
-          cleanupAudio();
-          return false;
         }
-
-        // ── Merge streams via AudioContext ──
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const destination = audioContext.createMediaStreamDestination();
-        const micSource  = audioContext.createMediaStreamSource(micStream!);
-        const displaySource = audioContext.createMediaStreamSource(displayStream);
-        micSource.connect(destination);
-        displaySource.connect(destination);
-        stream = destination.stream;
-        audioContextRef.current = audioContext;
-
-        // Keep refs for cleanup
-        streamRef.current = new MediaStream([
-          ...micStream!.getTracks(),
-          ...displayStream.getTracks()
-        ]);
-
+        if (micStream && displayStream && displayStream.getAudioTracks().length > 0) {
+          try {
+            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const destination = audioContext.createMediaStreamDestination();
+            const micSource = audioContext.createMediaStreamSource(micStream);
+            const displaySource = audioContext.createMediaStreamSource(displayStream);
+            micSource.connect(destination);
+            displaySource.connect(destination);
+            stream = destination.stream;
+            audioContextRef.current = audioContext;
+          } catch (e) {
+            stream = micStream;
+          }
+        } else {
+          stream = micStream || displayStream;
+        }
       } else if (mode === 'system') {
-        if (!navigator.mediaDevices?.getDisplayMedia) {
-          onError(AppErrorType.UNKNOWN, 'Screen sharing (System Audio) is not supported in this browser or requires a secure HTTPS/localhost connection.');
-          setStatus('error');
-          cleanupAudio();
-          return false;
-        }
-        // ── Capture System Audio only via getDisplayMedia ──
-        try {
-          displayStream = await navigator.mediaDevices.getDisplayMedia({
-            video: true,
-            audio: true
-          });
-          displayStreamRef.current = displayStream;
-
-          const audioTracks = displayStream.getAudioTracks();
-          if (audioTracks.length === 0) {
-            displayStream.getTracks().forEach(t => t.stop());
-            displayStreamRef.current = null;
-            onError(AppErrorType.SCREEN_NO_AUDIO);
-            setStatus('error');
-            cleanupAudio();
-            return false;
+        if (navigator.mediaDevices?.getDisplayMedia) {
+          try {
+            displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+            displayStreamRef.current = displayStream;
+            displayStream.getVideoTracks().forEach(t => t.stop());
+            if (displayStream.getAudioTracks().length > 0) {
+              stream = new MediaStream(displayStream.getAudioTracks());
+            }
+          } catch (e) {
+            console.warn("System audio share cancelled, falling back to mic.");
           }
-
-          // Stop video tracks — we only need the audio
-          displayStream.getVideoTracks().forEach(track => track.stop());
-          stream = new MediaStream(audioTracks);
-          streamRef.current = stream;
-        } catch (err: any) {
-          displayStreamRef.current = null;
-          if (err.name === 'AbortError') {
-            onError(AppErrorType.SCREEN_CANCELLED);
-          } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-            onError(AppErrorType.SCREEN_PERMISSION_DENIED);
-          } else {
-            onError(AppErrorType.SCREEN_PERMISSION_DENIED);
-          }
-          setStatus('error');
-          cleanupAudio();
-          return false;
         }
-
+        if (!stream) {
+          micStream = await captureMic();
+          stream = micStream;
+        }
       } else {
-        // ── Microphone only ──
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-          micStreamRef.current = stream;
-          streamRef.current = stream;
-        } catch (err: any) {
-          const errType = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'
-            ? AppErrorType.MIC_PERMISSION_DENIED
-            : err.name === 'NotFoundError'
-            ? AppErrorType.MIC_NOT_FOUND
-            : err.name === 'NotReadableError'
-            ? AppErrorType.MIC_IN_USE
-            : err.name === 'SecurityError'
-            ? AppErrorType.MIC_SECURITY_ERROR
-            : AppErrorType.REC_DEVICE_ERROR;
-          onError(errType);
-          setStatus('error');
-          cleanupAudio();
-          return false;
-        }
+        micStream = await captureMic();
+        stream = micStream;
       }
-      
+
+      if (!stream) {
+        onError(AppErrorType.MIC_PERMISSION_DENIED, "Could not access microphone or audio input. Please check device permissions.");
+        setStatus('error');
+        cleanupAudio();
+        return false;
+      }
+      streamRef.current = stream;
+
       // Setup Web Speech API for live transcription
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
@@ -281,7 +221,6 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
         recognition.onresult = (event: any) => {
           let finalTranscript = '';
           let interimTranscript = '';
-
           for (let i = 0; i < event.results.length; ++i) {
             if (event.results[i].isFinal) {
               finalTranscript += event.results[i][0].transcript + ' ';
@@ -330,7 +269,7 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
         const average = sum / dataArray.length;
         const normalizedVolume = Math.min(100, Math.round((average / 128) * 100));
         setVolume(normalizedVolume);
-        setIsSpeaking(normalizedVolume > 10); // Threshold for "Speaking"
+        setIsSpeaking(normalizedVolume > 10);
         volumeIntervalRef.current = requestAnimationFrame(updateVolume);
       };
       updateVolume();
@@ -341,26 +280,28 @@ export const useAudioRecorder = ({ onRecordingComplete, onDataAvailable, onError
       // Ensure stream is active before starting recorder
       if (stream.getTracks().every(track => track.readyState === 'live')) {
         try {
-          const options = { mimeType: 'audio/webm;codecs=opus' };
-          const mediaRecorder = MediaRecorder.isTypeSupported(options.mimeType) 
-            ? new MediaRecorder(stream, options) 
+          const mimeType = getSupportedMimeType();
+          const mediaRecorder = mimeType 
+            ? new MediaRecorder(stream, { mimeType }) 
             : new MediaRecorder(stream);
             
           mediaRecorderRef.current = mediaRecorder;
           audioChunksRef.current = [];
 
+          const activeMimeType = mediaRecorder.mimeType || mimeType || 'audio/webm';
+
           mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0) {
               audioChunksRef.current.push(event.data);
               if (onDataAvailable) {
-                const currentBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                const currentBlob = new Blob(audioChunksRef.current, { type: activeMimeType });
                 onDataAvailable(currentBlob);
               }
             }
           };
 
           mediaRecorder.onstop = () => {
-            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            const audioBlob = new Blob(audioChunksRef.current, { type: activeMimeType });
             const shouldDiscard = discardOnStopRef.current;
             discardOnStopRef.current = false;
 

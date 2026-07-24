@@ -68,7 +68,7 @@ export const TranscribePage: React.FC = () => {
         console.warn("WAV conversion warning, using raw blob:", convErr);
       }
       
-      const transcript = await geminiService.transcribeOnly(wavBlob, apiKey);
+      const transcript = await geminiService.transcribeOnly(wavBlob, apiKey, liveTranscript);
       
       setFinalTranscript(transcript);
       setStatus('completed');
